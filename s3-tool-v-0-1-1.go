@@ -36,18 +36,18 @@ func main() {
 	// make a channel to receive output from ListObjects() calls
 	c := make(chan *s3.ListObjectsV2Output,bucket_count)
 	// make a channel to receive output from getBucketSize() calls
-	ch := make(chan int,bucket_count)
+	// ch := make(chan int,bucket_count)
 	// start a goroutine call to listObjects() for each bucket returned by listBuckets
 	for i := range bucket_list {
 		go listObjects(bucket_list[i],c)
-		go getBucketSize(bucket_list[i],c)
+		// go getBucketSize(bucket_list[i],c)
 	}
 	// start receiver loop 
 	for i := range c {
 		bucket_record := BucketRecord{
 			Name: *i.Name, 
 			ObjectCount: len(i.Contents),
-			BucketSize: getBucketSize()
+			// BucketSize: getBucketSize()
 		}
 		b, _ := json.Marshal(bucket_record)
 		s := string(b)
