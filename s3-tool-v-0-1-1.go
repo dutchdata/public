@@ -25,7 +25,7 @@ var (
 type BucketRecord struct {
 	Name string `json:"name"`
 	ObjectCount int `json:"object_count"`
-	// Objects ObjectRecord `json:"objects"`
+	TotalSize int64 `json:"total_size_k"`
 }
 
 func main() {
@@ -33,27 +33,22 @@ func main() {
 	s3ssion = startSession()
 	bucket_count, bucket_list := listBuckets()
 	cbuffer = bucket_count
+
 	// make a channel to receive output from ListObjects() calls
-	c := make(chan *s3.ListObjectsV2Output,bucket_count)
-	// make a channel to receive output from getBucketSize() calls
-	// ch := make(chan int,bucket_count)
+	c := make(chan BucketRecord,bucket_count)
+
 	// start a goroutine call to listObjects() for each bucket returned by listBuckets
 	for i := range bucket_list {
 		go listObjects(bucket_list[i],c)
-		// go getBucketSize(bucket_list[i],c)
 	}
+
 	// start receiver loop 
 	for i := range c {
-		bucket_record := BucketRecord{
-			Name: *i.Name, 
-			ObjectCount: len(i.Contents),
-			// BucketSize: getBucketSize()
-		}
-		b, _ := json.Marshal(bucket_record)
+		b, _ := json.Marshal(i)
 		s := string(b)
-		fmt.Println(s,time.Since(start),i)
+		fmt.Println(s)
+		// fmt.Println(time.Since(start),i)
 
-		getBucketSize(*i.Name)
 		// decrement cbuffer and break loop when cbuffer is 0
 		cbuffer --
 		if cbuffer == 0 {
@@ -88,30 +83,31 @@ func listBuckets() (bucket_count int, bucket_list []string) {
 	return bucket_count, bucket_list
 }
 
-func listObjects(bucket string, c chan *s3.ListObjectsV2Output) () {
+func listObjects(bucket string, c chan BucketRecord) () {
 	resp, err := s3ssion.ListObjectsV2(&s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 	})
 	if err != nil {
 		panic(err)
 	}
-	c <- resp
+
+	// get collective size of objects for bucket in k
+	contents := resp.Contents
+	var bucket_size int64
+	for i := range contents {
+		bucket_size += *contents[i].Size
+	}
+
+	// create BucketRecord object to send via channel
+	bucket_record := BucketRecord{
+		Name: *resp.Name,
+		ObjectCount: len(resp.Contents),
+		TotalSize: bucket_size,
+	} 
+	// send BucketRecord object back to caller via channel
+	c <- bucket_record
 	if cbuffer == 0 {
 		close(c)
 	}
 }
 
-func getBucketSize(bucket string) (bucket_size int64) {
-	resp, err := s3ssion.ListObjectsV2(&s3.ListObjectsV2Input{
-		Bucket: aws.String(bucket),
-	})
-	if err != nil {
-		panic(err)
-	}
-	contents := resp.Contents
-	for i := range contents {
-		bucket_size += *contents[i].Size
-	}
-	fmt.Println(bucket_size)
-	return bucket_size
-}
