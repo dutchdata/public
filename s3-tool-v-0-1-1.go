@@ -19,7 +19,7 @@ var (
 	s3ssion *s3.S3
 	cbuffer int
 	cFile []string
-	eFile string
+	sFile string
 )
 
 // type ObjectRecord struct {
@@ -39,42 +39,12 @@ func main() {
 
 	e := echo.New()
 	e.GET("/",func(c echo.Context) (error) {
-		return c.String(http.StatusOK, eFile)
+		return c.String(http.StatusOK, sFile)
 	})
 
 	e.GET("/auth", accessKeyHandler)
-	// e.GET("/go", sessionHandler)
-
-	start := time.Now()
-	s3ssion = startSession()
-	bucket_count, bucket_list := listBuckets()
-	cbuffer = bucket_count
-
-	// make a channel to receive output from ListObjects() calls
-	c := make(chan BucketRecord,bucket_count)
-
-	// start a goroutine call to listObjects() for each bucket returned by listBuckets
-	for i := range bucket_list {
-		go listObjects(bucket_list[i],c)
-	}
-
-	// start receiver loop 
-	for i := range c {
-		b, _ := json.Marshal(i)
-		s := string(b)
-		fmt.Println(s)
-		cFile = append(cFile,s)
-		// fmt.Println(time.Since(start),i)
-
-		// decrement cbuffer and break loop when cbuffer is 0
-		cbuffer --
-		if cbuffer == 0 {
-			break
-		}
-	}	
-	fmt.Println("total:",time.Since(start))
-	b, _ := json.Marshal(cFile)
-	eFile = string(b)
+	e.GET("/go", sessionHandler)
+	e.GET("/get", recordHandler)
 
 	e.HideBanner = true
 	e.Use(middleware.Logger())
@@ -90,11 +60,15 @@ func startSession() (s3ssion *s3.S3) {
 	return s3ssion
 }
 
-// func sessionHandler(c echo.Context) error {
+func recordHandler(c echo.Context) error {
+	sFile := getBucketRecords()
+	return c.String(http.StatusOK,sFile)
+}
 
-// 	s3ssion = startSession()
-// 	return c.String(http.StatusOK,"hello world")
-// }
+func sessionHandler(c echo.Context) error {
+
+	return c.String(http.StatusOK,"go")
+}
 
 func accessKeyHandler(c echo.Context) (error) {
 
@@ -170,3 +144,46 @@ func listObjects(bucket string, c chan BucketRecord) () {
 	}
 }
 
+func getBucketRecords() (sFile string) {
+	// start timer for operation(s)
+	start := time.Now()
+	// start session (concurrent read ok; 
+	// concurrent write not recommended)
+	s3ssion = startSession()
+	// run listBuckets()
+	bucket_count, bucket_list := listBuckets()
+	// define buffer and goroutine channel range
+	cbuffer = bucket_count
+
+	// make a channel to receive output from listObjects() calls
+	ch := make(chan BucketRecord,bucket_count)
+
+	// start a goroutine call to listObjects() for each bucket 
+	// returned by listBuckets()
+	for i := range bucket_list {
+		go listObjects(bucket_list[i],ch)
+	}
+
+	// empty cFile and eFile for idempotency with repeated calls
+	cFile = []string{}
+	sFile = ""
+
+	// start receiver loop for channel of BucketRecord
+	for i := range ch {
+		b, _ := json.Marshal(i)
+		s := string(b)
+		fmt.Println(s)
+		cFile = append(cFile,s)
+		// fmt.Println(time.Since(start),i)
+
+		// decrement cbuffer and break loop when cbuffer is 0
+		cbuffer --
+		if cbuffer == 0 {
+			break
+		}
+	}	
+	fmt.Println("total:",time.Since(start))
+	b, _ := json.Marshal(cFile)
+	sFile = string(b)
+	return sFile
+}
