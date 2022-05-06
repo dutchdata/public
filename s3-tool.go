@@ -20,6 +20,7 @@ var (
 	cbuffer int
 	cFile []string
 	sFile string
+	keys KeySet
 )
 
 // type ObjectRecord struct {
@@ -28,6 +29,12 @@ var (
 // 	StorageClass string `json:"storage_class"`
 // 	LastkModified string `json:"last_modified"`
 // }
+
+type KeySet struct {
+	Access_key_id string `json:"access_key_id"`
+	Secret_key string `json:"secret_key"`
+	Region string `json:"region"`
+}
 
 type BucketRecord struct {
 	Name string `json:"name"`
@@ -43,8 +50,7 @@ func main() {
 	})
 
 	e.GET("/auth", accessKeyHandler)
-	e.GET("/go", sessionHandler)
-	e.GET("/get", recordHandler)
+	e.GET("/go", recordHandler)
 
 	e.HideBanner = true
 	e.Use(middleware.Logger())
@@ -55,7 +61,7 @@ func main() {
 
 func startSession() (s3ssion *s3.S3) {
 	s3ssion = s3.New(session.Must(session.NewSession(&aws.Config{
-		Region: aws.String("us-west-2"),
+		Region: aws.String(keys.Region),
 	})))
 	return s3ssion
 }
@@ -65,16 +71,12 @@ func recordHandler(c echo.Context) error {
 	return c.String(http.StatusOK,sFile)
 }
 
-func sessionHandler(c echo.Context) error {
-
-	return c.String(http.StatusOK,"go")
-}
-
 func accessKeyHandler(c echo.Context) (error) {
 
 	type keySet struct {
 		Access_key_id string `json:"access_key_id"`
 		Secret_key string `json:"secret_key"`
+		Region string `json:"region"`
 	}
 
 	key_id := c.QueryParam("access_key_id")
@@ -85,9 +87,14 @@ func accessKeyHandler(c echo.Context) (error) {
 	secret_key_string := url.QueryEscape(secret_key)
 	os.Setenv("AWS_SECRET_ACCESS_KEY",secret_key_string)
 
-	keys := keySet{
+	region := c.QueryParam("region") 
+	region_string := url.QueryEscape(region)
+	os.Setenv("AWS_DEFAULT_REGION",region_string)
+
+	keys = KeySet{
 		Access_key_id: key_id_string,
 		Secret_key: secret_key_string,
+		Region: region_string,
 	}
 
 	keys_b, _ := json.Marshal(keys)
