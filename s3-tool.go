@@ -73,12 +73,6 @@ func recordHandler(c echo.Context) error {
 
 func accessKeyHandler(c echo.Context) (error) {
 
-	type keySet struct {
-		Access_key_id string `json:"access_key_id"`
-		Secret_key string `json:"secret_key"`
-		Region string `json:"region"`
-	}
-
 	key_id := c.QueryParam("access_key_id")
 	key_id_string := url.QueryEscape(key_id)
 	os.Setenv("AWS_ACCESS_KEY_ID",key_id_string)
