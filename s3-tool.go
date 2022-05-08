@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,8 +20,6 @@ import (
 var (
 	s3ssion *s3.S3
 	cbuffer int
-	cFile []string
-	sFile string
 	keys KeySet
 )
 
@@ -44,9 +44,10 @@ type BucketRecord struct {
 
 func main() {
 
+	getBucketRecords()
 	e := echo.New()
 	e.GET("/",func(c echo.Context) (error) {
-		return c.String(http.StatusOK, sFile)
+		return c.String(http.StatusOK, "ok")
 	})
 
 	e.GET("/auth", accessKeyHandler)
@@ -60,15 +61,22 @@ func main() {
 }
 
 func startSession() (s3ssion *s3.S3) {
+
+	keys_region := os.Getenv("AWS_DEFAULT_REGION")
+	if keys_region == "" {
+		keys_region = "us-west-2"
+	}
 	s3ssion = s3.New(session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(keys.Region),
+		Region: aws.String(keys_region),
 	})))
 	return s3ssion
 }
 
 func recordHandler(c echo.Context) error {
-	sFile := getBucketRecords()
-	return c.String(http.StatusOK,sFile)
+	rows := getBucketRecords()
+	b, _ := json.Marshal(rows)
+	s := string(b)
+	return c.String(http.StatusOK,s)
 }
 
 func accessKeyHandler(c echo.Context) (error) {
@@ -145,46 +153,62 @@ func listObjects(bucket string, c chan BucketRecord) () {
 	}
 }
 
-func getBucketRecords() (sFile string) {
-	// start timer for operation(s)
-	start := time.Now()
-	// start session (concurrent read ok; 
-	// concurrent write not recommended)
-	s3ssion = startSession()
-	// run listBuckets()
-	bucket_count, bucket_list := listBuckets()
-	// define buffer and goroutine channel range
-	cbuffer = bucket_count
+func getBucketRecords() (rows [][]string) {
+	start := time.Now() // start timer for operation(s)
+	s3ssion = startSession() // start session 
+	bucket_count, bucket_list := listBuckets() // get bucket names
+	cbuffer = bucket_count // define buffer range
 
-	// make a channel to receive output from listObjects() calls
-	ch := make(chan BucketRecord,bucket_count)
+	// make a channel to receive BucketRecord objects
+	ch := make(chan BucketRecord,bucket_count) 
 
-	// start a goroutine call to listObjects() for each bucket 
-	// returned by listBuckets()
+	// start a goroutine for each bucket available
 	for i := range bucket_list {
 		go listObjects(bucket_list[i],ch)
 	}
+	// define output file and its writer
+	target_file := "test-data01010101.csv"
+	path := pathResolver(target_file)
+	csvFile, _ := os.Create(path)
+	defer csvFile.Close()
+	writer := recordWriter(csvFile)
 
-	// empty cFile and eFile for idempotency with repeated calls
-	cFile = []string{}
-	sFile = ""
-
-	// start receiver loop for channel of BucketRecord
+	// receive records from channel and write to output file
 	for i := range ch {
-		b, _ := json.Marshal(i)
-		s := string(b)
-		fmt.Println(s)
-		cFile = append(cFile,s)
-		// fmt.Println(time.Since(start),i)
-
-		// decrement cbuffer and break loop when cbuffer is 0
-		cbuffer --
+		row := recordSerializer(i)
+		writer.Write(row)
+		writer.Flush()
+		fmt.Println(row) // for logging only; remove;
+		rows = append(rows,row)
+		cbuffer -- // decrement cbuffer and break loop when == 0
 		if cbuffer == 0 {
 			break
+			return rows
 		}
-	}	
-	fmt.Println("total:",time.Since(start))
-	b, _ := json.Marshal(cFile)
-	sFile = string(b)
-	return sFile
+	}
+	fmt.Println("total:",time.Since(start)) // log total request time
+	return rows
+}
+
+func recordSerializer(record BucketRecord) (row []string) {
+	rowName := record.Name
+	rowObjectCount := strconv.Itoa(record.ObjectCount)
+	rowTotalSize := strconv.Itoa(int(record.TotalSize))
+	row = []string{rowName,rowObjectCount,rowTotalSize}
+	return row
+}
+
+func recordWriter(file *os.File) (writer *csv.Writer) {
+	writer = csv.NewWriter(file)
+	headers := []string{"name","object_count","total_size_k"}
+	writer.Write(headers)
+	return writer
+}
+
+func pathResolver(target_file string)(path string) {
+	root_directory, _ := os.UserHomeDir()
+	tool_directory := "s3-tool-output"
+	os.Mkdir(root_directory + "/" + tool_directory,0755)
+	path = root_directory + "/" + tool_directory + "/" + target_file
+	return path
 }
