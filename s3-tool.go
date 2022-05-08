@@ -168,6 +168,7 @@ func getBucketRecords() (rows [][]string) {
 	// define output file and its writer
 	target_file := "test-data01010101.csv"
 	path := pathResolver(target_file)
+	fmt.Println(path)
 	csvFile, _ := os.Create(path)
 	defer csvFile.Close()
 	writer := recordWriter(csvFile)
