@@ -112,7 +112,7 @@ func accessKeyHandler(c echo.Context) (error) {
 	keys_b, _ := json.Marshal(keys)
 	key_set := string(keys_b)
 
-	fmt.Println(key_set)
+	// fmt.Println(key_set)
 	
 	return c.String(http.StatusOK, key_set)
 }
@@ -187,7 +187,7 @@ func getBucketRecords() (rows [][]string) {
 		}
 	}
 	// writeRecords(rows,"test-data01010101.csv","s3-tool-output")
-	fmt.Println("total:",time.Since(start)) // log total request time
+	fmt.Println("getBucketRecords() call time:",time.Since(start)) // log total request time
 	return rows
 }
 
