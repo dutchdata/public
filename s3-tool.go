@@ -21,6 +21,9 @@ var (
 	s3ssion *s3.S3
 	cbuffer int
 	keys KeySet
+	rows [][]string
+	target_file_name string
+	target_file_directory string
 )
 
 // type ObjectRecord struct {
@@ -51,6 +54,7 @@ func main() {
 
 	e.GET("/auth", accessKeyHandler)
 	e.GET("/go", recordHandler)
+	e.GET("/get",downloadHandler)
 
 	e.HideBanner = true
 	e.Use(middleware.Logger())
@@ -71,8 +75,15 @@ func startSession() (s3ssion *s3.S3) {
 	return s3ssion
 }
 
+func downloadHandler(c echo.Context) error {
+	target_file_name = "output.csv"
+	target_file_directory = "s3-tool-output"
+	writeRecords(rows,target_file_name,target_file_directory)
+	return c.Attachment(target_file_name,target_file_name)
+}
+
 func recordHandler(c echo.Context) error {
-	rows := getBucketRecords()
+	rows = getBucketRecords()
 	b, _ := json.Marshal(rows)
 	s := string(b)
 	return c.String(http.StatusOK,s)
@@ -165,20 +176,9 @@ func getBucketRecords() (rows [][]string) {
 	for i := range bucket_list {
 		go listObjects(bucket_list[i],ch)
 	}
-	// define output file and its writer
-	target_file := "test-data01010101.csv"
-	path := pathResolver(target_file)
-	fmt.Println(path)
-	csvFile, _ := os.Create(path)
-	defer csvFile.Close()
-	writer := recordWriter(csvFile)
-
 	// receive records from channel and write to output file
 	for i := range ch {
 		row := recordSerializer(i)
-		writer.Write(row)
-		writer.Flush()
-		fmt.Println(row) // for logging only; remove;
 		rows = append(rows,row)
 		cbuffer -- // decrement cbuffer and break loop when == 0
 		if cbuffer == 0 {
@@ -186,6 +186,7 @@ func getBucketRecords() (rows [][]string) {
 			return rows
 		}
 	}
+	// writeRecords(rows,"test-data01010101.csv","s3-tool-output")
 	fmt.Println("total:",time.Since(start)) // log total request time
 	return rows
 }
@@ -198,17 +199,27 @@ func recordSerializer(record BucketRecord) (row []string) {
 	return row
 }
 
-func recordWriter(file *os.File) (writer *csv.Writer) {
+func writeRecords(rows [][]string,file string, directory string) (output_file *os.File) {
+	output_file, _ = pathResolver(file,directory)
+	defer output_file.Close()
+	writer := newRecordWriter(output_file,[]string{"name","object_count","total_size_k"})
+	for i := range rows {
+		writer.Write(rows[i])
+	}
+	writer.Flush()
+	return output_file
+}
+
+func newRecordWriter(file *os.File,headers []string) (writer *csv.Writer) {
 	writer = csv.NewWriter(file)
-	headers := []string{"name","object_count","total_size_k"}
 	writer.Write(headers)
 	return writer
 }
 
-func pathResolver(target_file string)(path string) {
+func pathResolver(target_file_name string, parent_directory string) (file *os.File, path string) {
 	root_directory, _ := os.UserHomeDir()
-	tool_directory := "s3-tool-output"
-	os.Mkdir(root_directory + "/" + tool_directory,0755)
-	path = root_directory + "/" + tool_directory + "/" + target_file
-	return path
+	os.Mkdir(root_directory + "/" + parent_directory,0755)
+	path = root_directory + "/" + parent_directory + "/" + target_file_name
+	file, _ = os.Create(path)
+	return file, path
 }
