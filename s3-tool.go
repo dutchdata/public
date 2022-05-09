@@ -187,7 +187,6 @@ func getBucketRecords() (Rows [][]string) {
 			return Rows
 		}
 	}
-	// writeRecords(rows,"test-data01010101.csv","s3-tool-output")
 	fmt.Println("getBucketRecords() call time:",time.Since(start)) // log total request time
 	return Rows
 }
