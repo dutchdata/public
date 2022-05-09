@@ -221,6 +221,5 @@ func pathResolver(target_file_name string, parent_directory string) (file *os.Fi
 	os.Mkdir(root_directory + "/" + parent_directory,0755)
 	Path = root_directory + "/" + parent_directory + "/" + target_file_name
 	file, _ = os.Create(Path)
-	fmt.Println(Path)
 	return file, Path
 }
