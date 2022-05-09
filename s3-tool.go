@@ -19,11 +19,13 @@ import (
 
 var (
 	s3ssion *s3.S3
-	cbuffer int
-	keys KeySet
-	rows [][]string
-	target_file_name string
-	target_file_directory string
+	Cbuffer int
+	Keys KeySet
+	Rows [][]string
+	Target_file_name string
+	Target_file_directory string
+	Output_file *os.File
+	Path string
 )
 
 // type ObjectRecord struct {
@@ -54,7 +56,7 @@ func main() {
 
 	e.GET("/auth", accessKeyHandler)
 	e.GET("/go", recordHandler)
-	e.GET("/get",downloadHandler)
+	e.GET("/get", downloadHandler)
 
 	e.HideBanner = true
 	e.Use(middleware.Logger())
@@ -76,15 +78,16 @@ func startSession() (s3ssion *s3.S3) {
 }
 
 func downloadHandler(c echo.Context) error {
-	target_file_name = "output.csv"
-	target_file_directory = "s3-tool-output"
-	writeRecords(rows,target_file_name,target_file_directory)
-	return c.Attachment(target_file_name,target_file_name)
+	Target_file_name = "output.csv"
+	Target_file_directory = "s3-tool-output"
+	writeRecords(Rows,Target_file_name,Target_file_directory)
+	fmt.Println("File downloaded to",Path)
+	return c.Attachment(Path,"output.csv")
 }
 
 func recordHandler(c echo.Context) error {
-	rows = getBucketRecords()
-	b, _ := json.Marshal(rows)
+	Rows = getBucketRecords()
+	b, _ := json.Marshal(Rows)
 	s := string(b)
 	return c.String(http.StatusOK,s)
 }
@@ -103,16 +106,14 @@ func accessKeyHandler(c echo.Context) (error) {
 	region_string := url.QueryEscape(region)
 	os.Setenv("AWS_DEFAULT_REGION",region_string)
 
-	keys = KeySet{
+	Keys = KeySet{
 		Access_key_id: key_id_string,
 		Secret_key: secret_key_string,
 		Region: region_string,
 	}
 
-	keys_b, _ := json.Marshal(keys)
+	keys_b, _ := json.Marshal(Keys)
 	key_set := string(keys_b)
-
-	// fmt.Println(key_set)
 	
 	return c.String(http.StatusOK, key_set)
 }
@@ -158,16 +159,16 @@ func listObjects(bucket string, c chan BucketRecord) () {
 	} 
 	// send BucketRecord object back to caller via channel
 	c <- bucket_record
-	if cbuffer == 0 {
-		close(c)
-	}
+	// if Cbuffer == 0 {
+	// 	close(c)
+	// }
 }
 
-func getBucketRecords() (rows [][]string) {
+func getBucketRecords() (Rows [][]string) {
 	start := time.Now() // start timer for operation(s)
 	s3ssion = startSession() // start session 
 	bucket_count, bucket_list := listBuckets() // get bucket names
-	cbuffer = bucket_count // define buffer range
+	Cbuffer = bucket_count // define buffer range
 
 	// make a channel to receive BucketRecord objects
 	ch := make(chan BucketRecord,bucket_count) 
@@ -179,16 +180,16 @@ func getBucketRecords() (rows [][]string) {
 	// receive records from channel and write to output file
 	for i := range ch {
 		row := recordSerializer(i)
-		rows = append(rows,row)
-		cbuffer -- // decrement cbuffer and break loop when == 0
-		if cbuffer == 0 {
+		Rows = append(Rows,row)
+		Cbuffer -- // decrement cbuffer and break loop when == 0
+		if Cbuffer == 0 {
 			break
-			return rows
+			return Rows
 		}
 	}
 	// writeRecords(rows,"test-data01010101.csv","s3-tool-output")
 	fmt.Println("getBucketRecords() call time:",time.Since(start)) // log total request time
-	return rows
+	return Rows
 }
 
 func recordSerializer(record BucketRecord) (row []string) {
@@ -200,7 +201,7 @@ func recordSerializer(record BucketRecord) (row []string) {
 }
 
 func writeRecords(rows [][]string,file string, directory string) (output_file *os.File) {
-	output_file, _ = pathResolver(file,directory)
+	output_file, Path = pathResolver(file,directory)
 	defer output_file.Close()
 	writer := newRecordWriter(output_file,[]string{"name","object_count","total_size_k"})
 	for i := range rows {
@@ -216,10 +217,11 @@ func newRecordWriter(file *os.File,headers []string) (writer *csv.Writer) {
 	return writer
 }
 
-func pathResolver(target_file_name string, parent_directory string) (file *os.File, path string) {
+func pathResolver(target_file_name string, parent_directory string) (file *os.File, Path string) {
 	root_directory, _ := os.UserHomeDir()
 	os.Mkdir(root_directory + "/" + parent_directory,0755)
-	path = root_directory + "/" + parent_directory + "/" + target_file_name
-	file, _ = os.Create(path)
-	return file, path
+	Path = root_directory + "/" + parent_directory + "/" + target_file_name
+	file, _ = os.Create(Path)
+	fmt.Println(Path)
+	return file, Path
 }
