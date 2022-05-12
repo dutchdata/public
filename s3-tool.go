@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudtrail"
 	"github.com/aws/aws-sdk-go/service/s3"
 	echo "github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -28,13 +30,6 @@ var (
 	Path string
 )
 
-// type ObjectRecord struct {
-// 	Key string `json:"key"`
-// 	KSize int `json:"k_size"`
-// 	StorageClass string `json:"storage_class"`
-// 	LastkModified string `json:"last_modified"`
-// }
-
 type KeySet struct {
 	Access_key_id string `json:"access_key_id"`
 	Secret_key string `json:"secret_key"`
@@ -47,6 +42,41 @@ type BucketRecord struct {
 	TotalSize int64 `json:"total_size_k"`
 }
 
+type Trail struct {
+	Name string `json:"name"`
+	Bucket string `json:"bucket"`
+}
+
+type CloudTrailCustomEvent struct {
+	UserIdentity CloudTrailUserIdentity `json:"userIdentity,omitempty"`
+	EventType string `json:"eventType,omitempty"`
+	EventId string `json:"eventID,omitempty"`
+	AddEventData AddEventData `json:"additionalEventData"`
+	EventTime time.Time `json:"eventTime,omitempty"`
+	EventSource string `json:"eventSource,omitempty"`
+	EventName string `json:"eventName,omitempty"`
+	EventRegion string `json:"awsRegion,omitempty"`
+	SourceIP string `json:"sourceIPAddress,omitempty"`
+	UserAgent string `json:"userAgent,omitempty"`
+	RequestParameters RequestParameters `json:"requestParameters,omitempty"`
+}
+
+type CloudTrailUserIdentity struct {
+	Type string `json:"type,omitempty"`
+	InvokedBy string `json:"invokedBy,omitempty"`
+}
+
+type RequestParameters struct {
+	BucketName string `json:"bucketName,omitempty"`
+	Host string `json:"Host,omitempty"`
+	Acl string `json:"acl,omitempty"`
+}
+
+type AddEventData struct {
+	BytesIn int `json:"bytesTransferredIn"`
+	BytesOut int `json:"bytesTransferredOut"`
+}
+
 func main() {
 
 	e := echo.New()
@@ -57,12 +87,81 @@ func main() {
 	e.GET("/auth", accessKeyHandler)
 	e.GET("/go", recordHandler)
 	e.GET("/get", downloadHandler)
+	e.GET("/check-for-trails",trailCheckHandler)
+	e.GET("/get-trail-events", trailEventHandler)
 
 	e.HideBanner = true
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-
 	e.Logger.Fatal(e.Start(":8080"))
+}
+
+func checkForTrails()(trails []Trail, rows [][]string){
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+	
+	// Create CloudTrail client
+	svc := cloudtrail.New(sess)	
+
+	// call DescribeTrails()
+	resp, err := svc.DescribeTrails(&cloudtrail.DescribeTrailsInput{TrailNameList: nil})
+	if err != nil {
+    	fmt.Println("Got error calling CreateTrail:")
+    	fmt.Println(err.Error())
+    	return
+	}
+	
+	// list results of search for trails 
+	fmt.Println("Found", len(resp.TrailList), "trail(s)")
+	
+	// list data about trails, if exist
+	trails = []Trail{}
+	rows = [][]string{}
+	for _, trail := range resp.TrailList {
+
+		t := Trail{Name: *trail.Name,Bucket:*trail.S3BucketName}
+		trails = append(trails,t)
+		
+		row := []string{*trail.Name,*trail.S3BucketName}
+		rows = append(rows,row)
+	}
+
+	fmt.Println(rows)
+	return trails, rows
+}
+
+func checkForEvents()() {
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+
+	svc := cloudtrail.New(sess)
+
+	input := &cloudtrail.LookupEventsInput{EndTime: aws.Time(time.Now())}
+	
+	resp, err := svc.LookupEvents(input)
+	if err != nil {
+		fmt.Println("Got error calling CreateTrail:")
+		fmt.Println(err.Error())
+		return
+	}
+
+	fmt.Println("Found", len(resp.Events), "events before now")
+	fmt.Println("")
+
+	for _, event := range resp.Events {
+		m := []byte(*event.CloudTrailEvent)
+		r := bytes.NewReader(m)
+		decoder := json.NewDecoder(r)
+		ce := &CloudTrailCustomEvent{}
+		err := decoder.Decode(ce)
+		if err != nil {
+			panic(err)
+		}
+		// fmt.Println(*ce)
+	}
+
 }
 
 func startSession() (s3ssion *s3.S3) {
@@ -77,10 +176,21 @@ func startSession() (s3ssion *s3.S3) {
 	return s3ssion
 }
 
+func trailCheckHandler(c echo.Context) error {
+	checkForTrails()
+	return c.String(http.StatusOK,"check log")
+}
+
+func trailEventHandler(c echo.Context) error {
+	checkForEvents()
+	return c.String(http.StatusOK,"check log")
+}
+
 func downloadHandler(c echo.Context) error {
 	Target_file_name = "output.csv"
 	Target_file_directory = "s3-tool-output"
-	writeRecords(Rows,Target_file_name,Target_file_directory)
+	headers := []string{"name","object_count","total_size_k"}
+	writeRecords(headers,Rows,Target_file_name,Target_file_directory)
 	fmt.Println("File downloaded to",Path)
 	return c.Attachment(Path,"output.csv")
 }
@@ -199,10 +309,10 @@ func recordSerializer(record BucketRecord) (row []string) {
 	return row
 }
 
-func writeRecords(rows [][]string,file string, directory string) (output_file *os.File) {
+func writeRecords(headers []string,rows [][]string,file string, directory string) (output_file *os.File) {
 	output_file, Path = pathResolver(file,directory)
 	defer output_file.Close()
-	writer := newRecordWriter(output_file,[]string{"name","object_count","total_size_k"})
+	writer := newRecordWriter(output_file,headers)
 	for i := range rows {
 		writer.Write(rows[i])
 	}
