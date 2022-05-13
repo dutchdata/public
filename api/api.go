@@ -1,12 +1,9 @@
-package main
+package api
 
 import (
 	"bytes"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -15,26 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudtrail"
 	"github.com/aws/aws-sdk-go/service/s3"
-	echo "github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 var (
-	s3ssion *s3.S3
+	S3Session *s3.S3
 	Cbuffer int
-	Keys KeySet
-	Rows [][]string
-	Target_file_name string
-	Target_file_directory string
-	Output_file *os.File
-	Path string
 )
-
-type KeySet struct {
-	Access_key_id string `json:"access_key_id"`
-	Secret_key string `json:"secret_key"`
-	Region string `json:"region"`
-}
 
 type BucketRecord struct {
 	Name string `json:"name"`
@@ -77,26 +60,7 @@ type AddEventData struct {
 	BytesOut int `json:"bytesTransferredOut"`
 }
 
-func main() {
-
-	e := echo.New()
-	e.GET("/",func(c echo.Context) (error) {
-		return c.String(http.StatusOK, "ok")
-	})
-
-	e.GET("/auth", accessKeyHandler)
-	e.GET("/go", recordHandler)
-	e.GET("/get", downloadHandler)
-	e.GET("/check-for-trails",trailCheckHandler)
-	e.GET("/get-trail-events", trailEventHandler)
-
-	e.HideBanner = true
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Logger.Fatal(e.Start(":8080"))
-}
-
-func checkForTrails()(trails []Trail, rows [][]string){
+func CheckForTrails()(trails []Trail, rows [][]string){
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
@@ -131,7 +95,7 @@ func checkForTrails()(trails []Trail, rows [][]string){
 	return trails, rows
 }
 
-func checkForEvents()() {
+func CheckForEvents()() {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
@@ -164,72 +128,20 @@ func checkForEvents()() {
 
 }
 
-func startSession() (s3ssion *s3.S3) {
+func startSession() (S3Session *s3.S3) {
 
 	keys_region := os.Getenv("AWS_DEFAULT_REGION")
 	if keys_region == "" {
 		keys_region = "us-west-2"
 	}
-	s3ssion = s3.New(session.Must(session.NewSession(&aws.Config{
+	S3Session = s3.New(session.Must(session.NewSession(&aws.Config{
 		Region: aws.String(keys_region),
 	})))
-	return s3ssion
-}
-
-func trailCheckHandler(c echo.Context) error {
-	checkForTrails()
-	return c.String(http.StatusOK,"check log")
-}
-
-func trailEventHandler(c echo.Context) error {
-	checkForEvents()
-	return c.String(http.StatusOK,"check log")
-}
-
-func downloadHandler(c echo.Context) error {
-	Target_file_name = "output.csv"
-	Target_file_directory = "s3-tool-output"
-	headers := []string{"name","object_count","total_size_k"}
-	writeRecords(headers,Rows,Target_file_name,Target_file_directory)
-	fmt.Println("File downloaded to",Path)
-	return c.Attachment(Path,"output.csv")
-}
-
-func recordHandler(c echo.Context) error {
-	Rows = getBucketRecords()
-	b, _ := json.Marshal(Rows)
-	s := string(b)
-	return c.String(http.StatusOK,s)
-}
-
-func accessKeyHandler(c echo.Context) (error) {
-
-	key_id := c.QueryParam("access_key_id")
-	key_id_string := url.QueryEscape(key_id)
-	os.Setenv("AWS_ACCESS_KEY_ID",key_id_string)
-
-	secret_key := c.QueryParam("secret_key") 
-	secret_key_string := url.QueryEscape(secret_key)
-	os.Setenv("AWS_SECRET_ACCESS_KEY",secret_key_string)
-
-	region := c.QueryParam("region") 
-	region_string := url.QueryEscape(region)
-	os.Setenv("AWS_DEFAULT_REGION",region_string)
-
-	Keys = KeySet{
-		Access_key_id: key_id_string,
-		Secret_key: secret_key_string,
-		Region: region_string,
-	}
-
-	keys_b, _ := json.Marshal(Keys)
-	key_set := string(keys_b)
-	
-	return c.String(http.StatusOK, key_set)
+	return S3Session
 }
 
 func listBuckets() (bucket_count int, bucket_list []string) {
-	resp, err := s3ssion.ListBuckets(&s3.ListBucketsInput{})
+	resp, err := S3Session.ListBuckets(&s3.ListBucketsInput{})
 
 	if err != nil {
 		panic(err)
@@ -247,7 +159,7 @@ func listBuckets() (bucket_count int, bucket_list []string) {
 }
 
 func listObjects(bucket string, c chan BucketRecord) () {
-	resp, err := s3ssion.ListObjectsV2(&s3.ListObjectsV2Input{
+	resp, err := S3Session.ListObjectsV2(&s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 	})
 	if err != nil {
@@ -274,9 +186,17 @@ func listObjects(bucket string, c chan BucketRecord) () {
 	// }
 }
 
-func getBucketRecords() (Rows [][]string) {
+func recordSerializer(record BucketRecord) (row []string) {
+	rowName := record.Name
+	rowObjectCount := strconv.Itoa(record.ObjectCount)
+	rowTotalSize := strconv.Itoa(int(record.TotalSize))
+	row = []string{rowName,rowObjectCount,rowTotalSize}
+	return row
+}
+
+func GetBucketRecords() (Rows [][]string) {
 	start := time.Now() // start timer for operation(s)
-	s3ssion = startSession() // start session 
+	S3Session = startSession() // start session 
 	bucket_count, bucket_list := listBuckets() // get bucket names
 	Cbuffer = bucket_count // define buffer range
 
@@ -299,37 +219,4 @@ func getBucketRecords() (Rows [][]string) {
 	}
 	fmt.Println("getBucketRecords() call time:",time.Since(start)) // log total request time
 	return Rows
-}
-
-func recordSerializer(record BucketRecord) (row []string) {
-	rowName := record.Name
-	rowObjectCount := strconv.Itoa(record.ObjectCount)
-	rowTotalSize := strconv.Itoa(int(record.TotalSize))
-	row = []string{rowName,rowObjectCount,rowTotalSize}
-	return row
-}
-
-func writeRecords(headers []string,rows [][]string,file string, directory string) (output_file *os.File) {
-	output_file, Path = pathResolver(file,directory)
-	defer output_file.Close()
-	writer := newRecordWriter(output_file,headers)
-	for i := range rows {
-		writer.Write(rows[i])
-	}
-	writer.Flush()
-	return output_file
-}
-
-func newRecordWriter(file *os.File,headers []string) (writer *csv.Writer) {
-	writer = csv.NewWriter(file)
-	writer.Write(headers)
-	return writer
-}
-
-func pathResolver(target_file_name string, parent_directory string) (file *os.File, Path string) {
-	root_directory, _ := os.UserHomeDir()
-	os.Mkdir(root_directory + "/" + parent_directory,0755)
-	Path = root_directory + "/" + parent_directory + "/" + target_file_name
-	file, _ = os.Create(Path)
-	return file, Path
 }
