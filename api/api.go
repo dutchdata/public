@@ -16,86 +16,86 @@ import (
 
 var (
 	S3Session *s3.S3
-	Cbuffer int
+	Cbuffer   int
 )
 
 type BucketRecord struct {
-	Name string `json:"name"`
-	ObjectCount int `json:"object_count"`
-	TotalSize int64 `json:"total_size_k"`
+	Name        string `json:"name"`
+	ObjectCount int    `json:"object_count"`
+	TotalSize   int64  `json:"total_size_k"`
 }
 
 type Trail struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
 	Bucket string `json:"bucket"`
 }
 
 type CloudTrailCustomEvent struct {
-	UserIdentity CloudTrailUserIdentity `json:"userIdentity,omitempty"`
-	EventType string `json:"eventType,omitempty"`
-	EventId string `json:"eventID,omitempty"`
-	AddEventData AddEventData `json:"additionalEventData"`
-	EventTime time.Time `json:"eventTime,omitempty"`
-	EventSource string `json:"eventSource,omitempty"`
-	EventName string `json:"eventName,omitempty"`
-	EventRegion string `json:"awsRegion,omitempty"`
-	SourceIP string `json:"sourceIPAddress,omitempty"`
-	UserAgent string `json:"userAgent,omitempty"`
-	RequestParameters RequestParameters `json:"requestParameters,omitempty"`
+	UserIdentity      CloudTrailUserIdentity `json:"userIdentity,omitempty"`
+	EventType         string                 `json:"eventType,omitempty"`
+	EventId           string                 `json:"eventID,omitempty"`
+	AddEventData      AddEventData           `json:"additionalEventData"`
+	EventTime         time.Time              `json:"eventTime,omitempty"`
+	EventSource       string                 `json:"eventSource,omitempty"`
+	EventName         string                 `json:"eventName,omitempty"`
+	EventRegion       string                 `json:"awsRegion,omitempty"`
+	SourceIP          string                 `json:"sourceIPAddress,omitempty"`
+	UserAgent         string                 `json:"userAgent,omitempty"`
+	RequestParameters RequestParameters      `json:"requestParameters,omitempty"`
 }
 
 type CloudTrailUserIdentity struct {
-	Type string `json:"type,omitempty"`
+	Type      string `json:"type,omitempty"`
 	InvokedBy string `json:"invokedBy,omitempty"`
 }
 
 type RequestParameters struct {
 	BucketName string `json:"bucketName,omitempty"`
-	Host string `json:"Host,omitempty"`
-	Acl string `json:"acl,omitempty"`
+	Host       string `json:"Host,omitempty"`
+	Acl        string `json:"acl,omitempty"`
 }
 
 type AddEventData struct {
-	BytesIn int `json:"bytesTransferredIn"`
+	BytesIn  int `json:"bytesTransferredIn"`
 	BytesOut int `json:"bytesTransferredOut"`
 }
 
-func CheckForTrails()(trails []Trail, rows [][]string){
+func CheckForTrails() (trails []Trail, rows [][]string) {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
-	
+
 	// Create CloudTrail client
-	svc := cloudtrail.New(sess)	
+	svc := cloudtrail.New(sess)
 
 	// call DescribeTrails()
 	resp, err := svc.DescribeTrails(&cloudtrail.DescribeTrailsInput{TrailNameList: nil})
 	if err != nil {
-    	fmt.Println("Got error calling CreateTrail:")
-    	fmt.Println(err.Error())
-    	return
+		fmt.Println("Got error calling CreateTrail:")
+		fmt.Println(err.Error())
+		return
 	}
-	
-	// list results of search for trails 
+
+	// list results of search for trails
 	fmt.Println("Found", len(resp.TrailList), "trail(s)")
-	
+
 	// list data about trails, if exist
 	trails = []Trail{}
 	rows = [][]string{}
 	for _, trail := range resp.TrailList {
 
-		t := Trail{Name: *trail.Name,Bucket:*trail.S3BucketName}
-		trails = append(trails,t)
-		
-		row := []string{*trail.Name,*trail.S3BucketName}
-		rows = append(rows,row)
+		t := Trail{Name: *trail.Name, Bucket: *trail.S3BucketName}
+		trails = append(trails, t)
+
+		row := []string{*trail.Name, *trail.S3BucketName}
+		rows = append(rows, row)
 	}
 
 	fmt.Println(rows)
 	return trails, rows
 }
 
-func CheckForEvents()() {
+func CheckForEvents() {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
@@ -103,7 +103,7 @@ func CheckForEvents()() {
 	svc := cloudtrail.New(sess)
 
 	input := &cloudtrail.LookupEventsInput{EndTime: aws.Time(time.Now())}
-	
+
 	resp, err := svc.LookupEvents(input)
 	if err != nil {
 		fmt.Println("Got error calling CreateTrail:")
@@ -148,8 +148,8 @@ func listBuckets() (bucket_count int, bucket_list []string) {
 	}
 
 	bucket_count = len(resp.Buckets)
-	bucket_list = make([]string,bucket_count)
-	
+	bucket_list = make([]string, bucket_count)
+
 	for i := 0; i < bucket_count; i++ {
 		bucket_name := *resp.Buckets[i].Name
 		bucket_list[i] = bucket_name
@@ -158,7 +158,7 @@ func listBuckets() (bucket_count int, bucket_list []string) {
 	return bucket_count, bucket_list
 }
 
-func listObjects(bucket string, c chan BucketRecord) () {
+func listObjects(bucket string, c chan BucketRecord) {
 	resp, err := S3Session.ListObjectsV2(&s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 	})
@@ -175,10 +175,10 @@ func listObjects(bucket string, c chan BucketRecord) () {
 
 	// create BucketRecord object to send via channel
 	bucket_record := BucketRecord{
-		Name: *resp.Name,
+		Name:        *resp.Name,
 		ObjectCount: len(resp.Contents),
-		TotalSize: bucket_size,
-	} 
+		TotalSize:   bucket_size,
+	}
 	// send BucketRecord object back to caller via channel
 	c <- bucket_record
 	// if Cbuffer == 0 {
@@ -190,33 +190,30 @@ func recordSerializer(record BucketRecord) (row []string) {
 	rowName := record.Name
 	rowObjectCount := strconv.Itoa(record.ObjectCount)
 	rowTotalSize := strconv.Itoa(int(record.TotalSize))
-	row = []string{rowName,rowObjectCount,rowTotalSize}
+	row = []string{rowName, rowObjectCount, rowTotalSize}
 	return row
 }
 
 func GetBucketRecords() (Rows [][]string) {
-	start := time.Now() // start timer for operation(s)
-	S3Session = startSession() // start session 
+	S3Session = startSession()                 // start session
 	bucket_count, bucket_list := listBuckets() // get bucket names
-	Cbuffer = bucket_count // define buffer range
+	Cbuffer = bucket_count                     // define buffer range
 
 	// make a channel to receive BucketRecord objects
-	ch := make(chan BucketRecord,bucket_count) 
+	ch := make(chan BucketRecord, bucket_count)
 
 	// start a goroutine for each bucket available
 	for i := range bucket_list {
-		go listObjects(bucket_list[i],ch)
+		go listObjects(bucket_list[i], ch)
 	}
 	// receive records from channel and write to output file
 	for i := range ch {
 		row := recordSerializer(i)
-		Rows = append(Rows,row)
-		Cbuffer -- // decrement cbuffer and break loop when == 0
+		Rows = append(Rows, row)
+		Cbuffer-- // decrement cbuffer and break loop when == 0
 		if Cbuffer == 0 {
 			break
-			return Rows
 		}
 	}
-	fmt.Println("getBucketRecords() call time:",time.Since(start)) // log total request time
 	return Rows
 }
