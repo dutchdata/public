@@ -14,12 +14,14 @@ import (
 var (
 	S3Session *s3.S3
 	Cbuffer   int
+	Token     *string
 )
 
 type BucketRecord struct {
 	Name        string `json:"name"`
 	ObjectCount int    `json:"object_count"`
 	TotalSize   int64  `json:"total_size_k"`
+	IsTruncated bool   `json:"is_truncated"`
 }
 
 type Trail struct {
@@ -88,11 +90,12 @@ func listBuckets() (bucket_count int, bucket_list []string) {
 		bucket_name := *resp.Buckets[i].Name
 		bucket_list[i] = bucket_name
 	}
-
+	// fmt.Println(bucket_count, bucket_list)
 	return bucket_count, bucket_list
 }
 
 func listObjects(bucket string, c chan BucketRecord) {
+
 	resp, err := S3Session.ListObjectsV2(&s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 	})
@@ -100,25 +103,58 @@ func listObjects(bucket string, c chan BucketRecord) {
 		panic(err)
 	}
 
-	// get collective size of objects for bucket in k
-	contents := resp.Contents
-	var bucket_size int64
-	for i := range contents {
+	contents := resp.Contents     // store first page of resp
+	object_count := len(contents) // get initial object_count
+	var bucket_size int64         // init bucket_size var
+	for i := range contents {     // get initial bucket_size
 		bucket_size += *contents[i].Size
+	}
+
+	marker := *resp.IsTruncated
+	if marker {
+		Token = resp.NextContinuationToken
+	}
+	for marker {
+		rr, err := S3Session.ListObjectsV2(&s3.ListObjectsV2Input{
+			Bucket:            aws.String(bucket),
+			ContinuationToken: Token,
+		})
+
+		// increment object count and size
+		contents = rr.Contents        // update contents for new response
+		object_count += len(contents) // add updated contents length to object_count
+		for i := range contents {     // add updated object sizes to bucket_size
+			bucket_size += *contents[i].Size
+		}
+
+		marker = *rr.IsTruncated
+		if err != nil {
+			panic(err)
+		}
+		if marker {
+			Token = rr.NextContinuationToken
+		} else {
+			break
+		}
 	}
 
 	// create BucketRecord object to send via channel
 	bucket_record := BucketRecord{
 		Name:        *resp.Name,
-		ObjectCount: len(resp.Contents),
+		ObjectCount: object_count,
 		TotalSize:   bucket_size,
+		IsTruncated: marker,
 	}
+
 	// send BucketRecord object back to caller via channel
 	c <- bucket_record
 	// close channel if Cbuffer is 0
 	if Cbuffer == 0 {
 		close(c)
 	}
+
+	fmt.Println(bucket_record)
+
 }
 
 func recordSerializer(record BucketRecord) (row []string) {

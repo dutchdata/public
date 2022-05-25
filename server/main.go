@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"s3-tool/api"
 	"s3-tool/helper"
 
 	echo "github.com/labstack/echo/v4"
@@ -24,5 +25,7 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	e.Logger.Fatal(e.Start(":8080"))
+	api.GetBucketRecords()
+
+	// e.Logger.Fatal(e.Start(":8080"))
 }

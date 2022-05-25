@@ -36,7 +36,7 @@ func TrailCheckHandler(c echo.Context) error {
 func DownloadHandler(c echo.Context) error {
 	Target_file_name = "output.csv"
 	Target_file_directory = "s3-tool-output"
-	headers := []string{"name", "object_count", "total_size_k"}
+	headers := []string{"name", "object_count", "total_size_k", "cloudtrail_status", "data_events_status"}
 	WriteRecords(headers, Rows, Target_file_name, Target_file_directory)
 	fmt.Println("File downloaded to", Path)
 	return c.Attachment(Path, "output.csv")
