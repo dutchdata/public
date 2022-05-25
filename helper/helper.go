@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"bufio"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -14,12 +15,13 @@ import (
 )
 
 var (
-	Target_file_name      string
-	Target_file_directory string
-	Output_file           *os.File
-	Path                  string
-	Rows                  [][]string
-	Keys                  KeySet
+	CSV_path       string
+	REC_path       string
+	Recommendation string
+	FD             string
+	Path           string
+	Rows           [][]string
+	Keys           KeySet
 )
 
 type KeySet struct {
@@ -28,17 +30,15 @@ type KeySet struct {
 	Region        string `json:"region"`
 }
 
-func TrailCheckHandler(c echo.Context) error {
-	api.CheckForTrails()
-	return c.String(http.StatusOK, "check log")
-}
-
 func DownloadHandler(c echo.Context) error {
-	Target_file_name = "output.csv"
-	Target_file_directory = "s3-tool-output"
+	CSV_path = "output.csv"
+	FD = "s3-tool-output"
 	headers := []string{"name", "object_count", "total_size_k"}
-	WriteRecords(headers, Rows, Target_file_name, Target_file_directory)
-	fmt.Println("File downloaded to", Path)
+	WriteCSV(headers, Rows, CSV_path, FD)
+
+	REC_path = "recommendation.txt"
+	WriteRecommendation(REC_path, FD, Recommendation)
+
 	return c.Attachment(Path, "output.csv")
 }
 
@@ -46,7 +46,18 @@ func RecordHandler(c echo.Context) error {
 	Rows = api.GetBucketRecords()
 	b, _ := json.Marshal(Rows)
 	s := string(b)
-	return c.String(http.StatusOK, s)
+
+	n := api.CheckForTrails()
+	k := len(n)
+	if len(n) > 0 {
+		Recommendation = fmt.Sprintf("Found %d CloudTrail(s). More recommendations coming in the next major version :)", k)
+		fmt.Println(Recommendation)
+	} else {
+		Recommendation = "Found 0 CloudTrails. Please enable CloudTrail (including data events) to see more recommendations in the next major version :)"
+		fmt.Println(Recommendation)
+	}
+
+	return c.String(http.StatusOK, s+Recommendation)
 }
 
 func AccessKeyHandler(c echo.Context) error {
@@ -75,20 +86,34 @@ func AccessKeyHandler(c echo.Context) error {
 	return c.String(http.StatusOK, key_set)
 }
 
-func WriteRecords(headers []string, rows [][]string, file string, directory string) (output_file *os.File) {
+func WriteCSV(headers []string, rows [][]string, file string, directory string) (output_file *os.File) {
 	output_file, Path = PathResolver(file, directory)
 	defer output_file.Close()
-	writer := NewRecordWriter(output_file, headers)
+	csv_writer := NewCSVWriter(output_file, headers)
 	for i := range rows {
-		writer.Write(rows[i])
+		csv_writer.Write(rows[i])
 	}
-	writer.Flush()
+	csv_writer.Flush()
 	return output_file
 }
 
-func NewRecordWriter(file *os.File, headers []string) (writer *csv.Writer) {
+func NewCSVWriter(file *os.File, headers []string) (writer *csv.Writer) {
 	writer = csv.NewWriter(file)
 	writer.Write(headers)
+	return writer
+}
+
+func WriteRecommendation(file string, directory string, recommendation string) (output_file *os.File) {
+	output_file, Path = PathResolver(file, directory)
+	defer output_file.Close()
+	rec_writer := NewRecommendationWriter(output_file)
+	rec_writer.WriteString(recommendation)
+	rec_writer.Flush()
+	return output_file
+}
+
+func NewRecommendationWriter(file *os.File) (writer *bufio.Writer) {
+	writer = bufio.NewWriter(file)
 	return writer
 }
 

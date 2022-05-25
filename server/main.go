@@ -18,7 +18,6 @@ func main() {
 	e.GET("/auth", helper.AccessKeyHandler)
 	e.GET("/go", helper.RecordHandler)
 	e.GET("/get", helper.DownloadHandler)
-	e.GET("/check-trails", helper.TrailCheckHandler)
 
 	e.HideBanner = true
 	e.Use(middleware.Logger())
