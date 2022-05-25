@@ -29,7 +29,7 @@ type Trail struct {
 	Bucket string `json:"bucket"`
 }
 
-func CheckForTrails() (trails []Trail, rows [][]string) {
+func CheckForTrails() (trails []Trail) {
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
@@ -40,28 +40,17 @@ func CheckForTrails() (trails []Trail, rows [][]string) {
 	// call DescribeTrails()
 	resp, err := svc.DescribeTrails(&cloudtrail.DescribeTrailsInput{TrailNameList: nil})
 	if err != nil {
-		fmt.Println("Got error calling CreateTrail:")
-		fmt.Println(err.Error())
-		return
+		panic(err)
 	}
-
-	// list results of search for trails
-	fmt.Println("Found", len(resp.TrailList), "trail(s)")
 
 	// list data about trails, if they exist
 	trails = []Trail{}
-	rows = [][]string{}
 	for _, trail := range resp.TrailList {
-
 		t := Trail{Name: *trail.Name, Bucket: *trail.S3BucketName}
 		trails = append(trails, t)
-
-		row := []string{*trail.Name, *trail.S3BucketName}
-		rows = append(rows, row)
 	}
 
-	fmt.Println(rows)
-	return trails, rows
+	return trails
 }
 
 func startSession() (S3Session *s3.S3) {
