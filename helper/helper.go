@@ -33,11 +33,6 @@ func TrailCheckHandler(c echo.Context) error {
 	return c.String(http.StatusOK, "check log")
 }
 
-func TrailEventHandler(c echo.Context) error {
-	api.CheckForEvents()
-	return c.String(http.StatusOK, "check log")
-}
-
 func DownloadHandler(c echo.Context) error {
 	Target_file_name = "output.csv"
 	Target_file_directory = "s3-tool-output"

@@ -1,12 +1,9 @@
 package api
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -28,36 +25,6 @@ type BucketRecord struct {
 type Trail struct {
 	Name   string `json:"name"`
 	Bucket string `json:"bucket"`
-}
-
-type CloudTrailCustomEvent struct {
-	UserIdentity      CloudTrailUserIdentity `json:"userIdentity,omitempty"`
-	EventType         string                 `json:"eventType,omitempty"`
-	EventId           string                 `json:"eventID,omitempty"`
-	AddEventData      AddEventData           `json:"additionalEventData"`
-	EventTime         time.Time              `json:"eventTime,omitempty"`
-	EventSource       string                 `json:"eventSource,omitempty"`
-	EventName         string                 `json:"eventName,omitempty"`
-	EventRegion       string                 `json:"awsRegion,omitempty"`
-	SourceIP          string                 `json:"sourceIPAddress,omitempty"`
-	UserAgent         string                 `json:"userAgent,omitempty"`
-	RequestParameters RequestParameters      `json:"requestParameters,omitempty"`
-}
-
-type CloudTrailUserIdentity struct {
-	Type      string `json:"type,omitempty"`
-	InvokedBy string `json:"invokedBy,omitempty"`
-}
-
-type RequestParameters struct {
-	BucketName string `json:"bucketName,omitempty"`
-	Host       string `json:"Host,omitempty"`
-	Acl        string `json:"acl,omitempty"`
-}
-
-type AddEventData struct {
-	BytesIn  int `json:"bytesTransferredIn"`
-	BytesOut int `json:"bytesTransferredOut"`
 }
 
 func CheckForTrails() (trails []Trail, rows [][]string) {
@@ -93,41 +60,6 @@ func CheckForTrails() (trails []Trail, rows [][]string) {
 
 	fmt.Println(rows)
 	return trails, rows
-}
-
-func CheckForEvents() {
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-	}))
-
-	svc := cloudtrail.New(sess)
-
-	input := &cloudtrail.LookupEventsInput{EndTime: aws.Time(time.Now())}
-
-	resp, err := svc.LookupEvents(input)
-	if err != nil {
-		fmt.Println("Got error calling CreateTrail:")
-		fmt.Println(err.Error())
-		return
-	}
-
-	fmt.Println("Found", len(resp.Events), "events before now")
-	fmt.Println("")
-
-	for _, event := range resp.Events {
-		m := []byte(*event.CloudTrailEvent)
-		r := bytes.NewReader(m)
-		decoder := json.NewDecoder(r)
-		ce := &CloudTrailCustomEvent{}
-		err := decoder.Decode(ce)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println(*ce)
-	}
-
-	fmt.Println(*resp.NextToken)
-
 }
 
 func startSession() (S3Session *s3.S3) {
