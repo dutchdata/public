@@ -79,7 +79,7 @@ func CheckForTrails() (trails []Trail, rows [][]string) {
 	// list results of search for trails
 	fmt.Println("Found", len(resp.TrailList), "trail(s)")
 
-	// list data about trails, if exist
+	// list data about trails, if they exist
 	trails = []Trail{}
 	rows = [][]string{}
 	for _, trail := range resp.TrailList {
@@ -123,8 +123,10 @@ func CheckForEvents() {
 		if err != nil {
 			panic(err)
 		}
-		// fmt.Println(*ce)
+		fmt.Println(*ce)
 	}
+
+	fmt.Println(*resp.NextToken)
 
 }
 
@@ -181,9 +183,10 @@ func listObjects(bucket string, c chan BucketRecord) {
 	}
 	// send BucketRecord object back to caller via channel
 	c <- bucket_record
-	// if Cbuffer == 0 {
-	// 	close(c)
-	// }
+	// close channel if Cbuffer is 0
+	if Cbuffer == 0 {
+		close(c)
+	}
 }
 
 func recordSerializer(record BucketRecord) (row []string) {
@@ -210,7 +213,7 @@ func GetBucketRecords() (Rows [][]string) {
 	for i := range ch {
 		row := recordSerializer(i)
 		Rows = append(Rows, row)
-		Cbuffer-- // decrement cbuffer and break loop when == 0
+		Cbuffer-- // decrement Cbuffer and break loop when == 0
 		if Cbuffer == 0 {
 			break
 		}
