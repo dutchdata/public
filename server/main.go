@@ -2,7 +2,7 @@ package main
 
 import (
 	"net/http"
-	"s3-tool/helper"
+	"s3-tool/handler"
 
 	echo "github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -15,10 +15,10 @@ func main() {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	e.GET("/auth", helper.AccessKeyHandler)
-	e.GET("/go", helper.RecordHandler)
-	e.GET("/getcsv", helper.DownloadCSVHandler)
-	e.GET("/getrec", helper.DownloadRecHandler)
+	e.GET("/auth", handler.AccessKeyHandler)
+	e.GET("/go", handler.RecordHandler)
+	e.GET("/getcsv", handler.DownloadCSVHandler)
+	e.GET("/getrec", handler.DownloadRecHandler)
 
 	e.HideBanner = true
 	e.Use(middleware.Logger())
