@@ -17,7 +17,8 @@ func main() {
 
 	e.GET("/auth", helper.AccessKeyHandler)
 	e.GET("/go", helper.RecordHandler)
-	e.GET("/get", helper.DownloadHandler)
+	e.GET("/getcsv", helper.DownloadCSVHandler)
+	e.GET("/getrec", helper.DownloadRecHandler)
 
 	e.HideBanner = true
 	e.Use(middleware.Logger())

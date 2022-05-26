@@ -30,16 +30,21 @@ type KeySet struct {
 	Region        string `json:"region"`
 }
 
-func DownloadHandler(c echo.Context) error {
+func DownloadCSVHandler(c echo.Context) error {
 	CSV_path = "output.csv"
 	FD = "s3-tool-output"
 	headers := []string{"name", "object_count", "total_size_k"}
 	WriteCSV(headers, Rows, CSV_path, FD)
 
+	return c.Attachment(Path, "output.csv")
+}
+
+func DownloadRecHandler(c echo.Context) error {
+	FD = "s3-tool-output"
 	REC_path = "recommendation.txt"
 	WriteRecommendation(REC_path, FD, Recommendation)
 
-	return c.Attachment(Path, "output.csv")
+	return c.Attachment(Path, "recommendation.txt")
 }
 
 func RecordHandler(c echo.Context) error {
