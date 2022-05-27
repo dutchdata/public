@@ -11,7 +11,7 @@
 #### Authenticating
 
 5. `http://localhost:8080/auth` is the endpoint.
-6. Use query parameters `access_key_id`, `secret_key`, and `region` to pass your Access Key ID, Secret Key ID, and default AWS region, respectively and in the same call. This sets ENV variables in the container for AWS authentication (the variables are lost when the container stops running).
+6. Use query parameters `access_key_id`, `secret_key`, and `region` to pass your Access Key ID, Secret Key ID, and default AWS region, respectively and in the same request. This sets ENV variables in the container for AWS authentication (the variables are lost when the container stops running).
 
 #### Running the S3 Analysis
 
