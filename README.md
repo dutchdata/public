@@ -17,7 +17,7 @@
 
 7. `http://localhost:8080/go` will start the analysis, which (for now) includes only the number of buckets, the number of objects per bucket, and the collective size of those objects. It starts one goroutine per bucket, logs the result of each as it completes, and then displays all the results at once in the webpage (it's all function and no form, right now). 
 8. `http://localhost:8080/getcsv` will prompt you to download the CSV file with the bucket data retrieved.
-9. `http://localhost:8080/getrec` will prompt you to download the Recommednation file. Currently, the only recommendation given will be to either turn on CloudTrail events, or to wait until the next major version of this applet. 
+9. `http://localhost:8080/getrec` will prompt you to download the Recommendation file. Currently, the only recommendation given will be to either turn on CloudTrail events, or to wait until the next major version of this applet. 
 
 ## Next Major Version
 
